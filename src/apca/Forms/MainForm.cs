@@ -397,19 +397,26 @@ namespace apca.Forms
                         // Apply scaling with floating-point arithmetic
                         float scaledOutput = outputSample * outputScale;
                         float scaledMic = micSample * micScale;
+                        LogMessage($"Scaled values - Output: {scaledOutput}, Mic: {scaledMic}");
 
                         // Clamp values
                         short finalOutput = (short)Math.Clamp(scaledOutput, short.MinValue, short.MaxValue);
                         short finalMic = (short)Math.Clamp(scaledMic, short.MinValue, short.MaxValue);
+                        LogMessage($"Final values - Output: {finalOutput}, Mic: {finalMic}");
 
                         // Write to stereo output (maintaining original byte order)
                         var outputBytes = BitConverter.GetBytes(finalOutput);
                         var micBytes = BitConverter.GetBytes(finalMic);
 
+                        LogMessage($"Output bytes: {outputBytes[0]},{outputBytes[1]} Mic bytes: {micBytes[0]},{micBytes[1]}");
+
+
                         stereoData[i * 2] = outputBytes[0];
                         stereoData[i * 2 + 1] = outputBytes[1];
                         stereoData[i * 2 + 2] = micBytes[0];
                         stereoData[i * 2 + 3] = micBytes[1];
+
+                        LogMessage($"Stereo data at {i*2}: {stereoData[i*2]},{stereoData[i*2+1]},{stereoData[i*2+2]},{stereoData[i*2+3]}");
                     }
 
                     writer.Write(stereoData, 0, stereoData.Length);
