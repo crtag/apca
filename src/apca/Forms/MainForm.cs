@@ -385,42 +385,43 @@ namespace apca.Forms
                     System.Diagnostics.Debug.WriteLine($"Mix: Levels - Output: {outputLevel}, Mic: {micLevel}");
 
                     byte[] stereoData = new byte[outputRead * 2];
+                    LogMessage($"Created stereo buffer of size: {stereoData.Length} for outputRead: {outputRead}");
+
                     for (int i = 0; i < outputRead; i += 2)
                     {
                         short outputSample = BitConverter.ToInt16(outputData, i);
                         short micSample = BitConverter.ToInt16(micData, i);
+                        
+                        LogMessage($"Read samples at {i} - Output: {outputSample}, Mic: {micSample}");
 
                         // Adjust scaling factors
-                        const float outputScale = 0.7f;  // Increased from 0.5
-                        const float micScale = 1.5f;     // Reduced from 2.0
+                        const float outputScale = 0.7f;
+                        const float micScale = 1.5f;
 
                         // Apply scaling with floating-point arithmetic
                         float scaledOutput = outputSample * outputScale;
                         float scaledMic = micSample * micScale;
-                        LogMessage($"Scaled values - Output: {scaledOutput}, Mic: {scaledMic}");
 
                         // Clamp values
                         short finalOutput = (short)Math.Clamp(scaledOutput, short.MinValue, short.MaxValue);
                         short finalMic = (short)Math.Clamp(scaledMic, short.MinValue, short.MaxValue);
-                        LogMessage($"Final values - Output: {finalOutput}, Mic: {finalMic}");
 
-                        // Write to stereo output (maintaining original byte order)
+                        // Write to stereo output
                         var outputBytes = BitConverter.GetBytes(finalOutput);
                         var micBytes = BitConverter.GetBytes(finalMic);
 
-                        LogMessage($"Output bytes: {outputBytes[0]},{outputBytes[1]} Mic bytes: {micBytes[0]},{micBytes[1]}");
+                        int writeIndex = i * 2; // Convert read position to stereo write position
+                        
+                        LogMessage($"Writing at index {writeIndex} - Output bytes: {outputBytes[0]},{outputBytes[1]} Mic bytes: {micBytes[0]},{micBytes[1]}");
 
-
-                        stereoData[i * 2] = outputBytes[0];
-                        stereoData[i * 2 + 1] = outputBytes[1];
-                        stereoData[i * 2 + 2] = micBytes[0];
-                        stereoData[i * 2 + 3] = micBytes[1];
-
-                        LogMessage($"Stereo data at {i*2}: {stereoData[i*2]},{stereoData[i*2+1]},{stereoData[i*2+2]},{stereoData[i*2+3]}");
+                        stereoData[writeIndex] = outputBytes[0];     // Left channel, first byte
+                        stereoData[writeIndex + 1] = outputBytes[1]; // Left channel, second byte
+                        stereoData[writeIndex + 2] = micBytes[0];    // Right channel, first byte
+                        stereoData[writeIndex + 3] = micBytes[1];    // Right channel, second byte
                     }
 
+                    LogMessage($"Writing total of {stereoData.Length} bytes to output file");
                     writer.Write(stereoData, 0, stereoData.Length);
-                    LogMessage($"Wrote {Math.Max(outputRead, micRead) * 2} bytes to output file");
                 }
             }
             catch (Exception ex)
