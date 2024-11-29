@@ -338,9 +338,14 @@ namespace apca.Forms
         {
             if (isRecording)
             {
+                LogMessage($"Mic incoming data: {e.BytesRecorded} bytes");
+                int preBufLevel = GetAudioLevel(e.Buffer);
+                LogMessage($"Pre-buffer mic level: {preBufLevel}");
+                
                 micBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                LogMessage($"Mic buffer contains: {micBuffer?.BufferedBytes ?? 0} bytes");
+                
                 int level = GetAudioLevel(e.Buffer);
-                System.Diagnostics.Debug.WriteLine($"Mic data received: {e.BytesRecorded} bytes, level: {level}");
                 this.BeginInvoke(() => micLevelLabel.Text = $"Mic Level: {level}");
             }
         }
@@ -351,10 +356,18 @@ namespace apca.Forms
 
             try
             {
+                LogMessage($"Mix: Output buffer: {outputBuffer.BufferedBytes}, Mic buffer: {micBuffer.BufferedBytes}");
+                
                 int bytesToRead = Math.Min(outputBuffer.BufferedBytes, micBuffer.BufferedBytes);
-                bytesToRead -= bytesToRead % 2; // Align to sample boundaries
+                bytesToRead -= bytesToRead % 2;
 
-                if (bytesToRead == 0) return;
+                if (bytesToRead == 0) 
+                {
+                    LogMessage("No bytes to read from buffers");
+                    return;
+                }
+
+                LogMessage($"Will read {bytesToRead} bytes");
 
                 byte[] outputData = new byte[bytesToRead];
                 byte[] micData = new byte[bytesToRead];
@@ -362,8 +375,15 @@ namespace apca.Forms
                 int outputRead = outputBuffer.Read(outputData, 0, bytesToRead);
                 int micRead = micBuffer.Read(micData, 0, bytesToRead);
 
-                if (outputRead > 0 && micRead > 0)
+                LogMessage($"Actually read - Output: {outputRead}, Mic: {micRead}");
+
+                if (outputRead > 0 || micRead > 0)
                 {
+                    int micLevel = GetAudioLevel(micData);
+                    int outputLevel = GetAudioLevel(outputData);
+                    LogMessage($"Levels - Output: {outputLevel}, Mic: {micLevel}");
+                    System.Diagnostics.Debug.WriteLine($"Mix: Levels - Output: {outputLevel}, Mic: {micLevel}");
+
                     byte[] stereoData = new byte[outputRead * 2];
                     for (int i = 0; i < outputRead; i += 2)
                     {
@@ -393,12 +413,31 @@ namespace apca.Forms
                     }
 
                     writer.Write(stereoData, 0, stereoData.Length);
+                    LogMessage($"Wrote {Math.Max(outputRead, micRead) * 2} bytes to output file");
                 }
             }
             catch (Exception ex)
             {
                 // Log or handle the error appropriately
                 System.Diagnostics.Debug.WriteLine($"Error in MixAndWriteAudio: {ex.Message}");
+            }
+        }
+
+        private void LogMessage(string message)
+        {
+            try
+            {
+                string logPath = Path.Combine(
+                    Path.GetDirectoryName(outputFilePath ?? "logs") ?? "logs", 
+                    "audio_capture.log"
+                );
+                
+                string logMessage = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}: {message}";
+                File.AppendAllText(logPath, logMessage + Environment.NewLine);
+            }
+            catch
+            {
+                // Silently fail if we can't write to the log
             }
         }
 
