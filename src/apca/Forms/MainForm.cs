@@ -84,8 +84,21 @@ namespace apca.Forms
         private string? outputFilePath;
         private bool isRecording;
         private System.Threading.Timer? mixerTimer;
+        private Label outputLevelLabel = null!;
+        private Label micLevelLabel = null!;
 
         public bool IsRecording => isRecording;
+
+        private int GetAudioLevel(byte[] buffer)
+        {
+            int sum = 0;
+            for (int i = 0; i < buffer.Length; i += 2)
+            {
+                short sample = BitConverter.ToInt16(buffer, i);
+                sum += Math.Abs(sample);
+            }
+            return sum / (buffer.Length / 2);
+        }
 
         public MainForm()
         {
@@ -136,10 +149,24 @@ namespace apca.Forms
             };
             startButton.Click += StartButton_Click;
 
+            outputLevelLabel = new Label
+            {
+                Text = "Output Level: 0",
+                Location = new Point(20, 180),
+                Width = 200
+            };
+
+            micLevelLabel = new Label
+            {
+                Text = "Mic Level: 0",
+                Location = new Point(20, 200),
+                Width = 200
+            };
+
             Controls.AddRange(new Control[] { 
                 outputLabel, outputDeviceCombo, 
                 inputLabel, inputDeviceCombo,
-                startButton 
+                startButton, outputLevelLabel, micLevelLabel 
             });
         }
 
@@ -193,28 +220,31 @@ namespace apca.Forms
             outputCapture?.Dispose();
             micCapture?.Dispose();
 
-            // Initialize output capture with its native format
+            // Use consistent format for both devices
+            var waveFormat = new WaveFormat(44100, 16, 1);
+            
             outputCapture = new WasapiLoopbackCapture(outputDevice.Device);
-            var outputFormat = outputCapture.WaveFormat;
+            // Force the output format to match our desired format
+            outputCapture.WaveFormat = waveFormat;
 
-            // Initialize input capture to match the output format
             micCapture = new WaveInEvent
             {
                 DeviceNumber = inputDevice.DeviceNumber,
-                WaveFormat = new WaveFormat(
-                    outputFormat.SampleRate,
-                    outputFormat.BitsPerSample,
-                    1) // Keep mic mono
+                WaveFormat = waveFormat
             };
 
             // Create buffers with appropriate formats
-            outputBuffer = new BufferedWaveProvider(outputFormat);
-            outputBuffer.BufferDuration = TimeSpan.FromSeconds(1);
-            outputBuffer.DiscardOnBufferOverflow = true;
+            outputBuffer = new BufferedWaveProvider(waveFormat) 
+            {
+                BufferDuration = TimeSpan.FromSeconds(0.5),  // Shorter buffer to reduce latency
+                DiscardOnBufferOverflow = true
+            };
 
-            micBuffer = new BufferedWaveProvider(micCapture.WaveFormat);
-            micBuffer.BufferDuration = TimeSpan.FromSeconds(1);
-            micBuffer.DiscardOnBufferOverflow = true;
+            micBuffer = new BufferedWaveProvider(waveFormat)
+            {
+                BufferDuration = TimeSpan.FromSeconds(0.5),
+                DiscardOnBufferOverflow = true
+            };
 
             outputCapture.DataAvailable += OutputCapture_DataAvailable;
             micCapture.DataAvailable += MicCapture_DataAvailable;
@@ -284,6 +314,8 @@ namespace apca.Forms
             if (isRecording)
             {
                 outputBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                int level = GetAudioLevel(e.Buffer);
+                this.BeginInvoke(() => outputLevelLabel.Text = $"Output Level: {level}");
             }
         }
 
@@ -292,6 +324,8 @@ namespace apca.Forms
             if (isRecording)
             {
                 micBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                int level = GetAudioLevel(e.Buffer);
+                this.BeginInvoke(() => micLevelLabel.Text = $"Mic Level: {level}");
             }
         }
 
@@ -319,13 +353,19 @@ namespace apca.Forms
                     short outputSample = BitConverter.ToInt16(outputData, i);
                     short micSample = BitConverter.ToInt16(micData, i);
 
-                    // Apply volume scaling
-                    outputSample = (short)(outputSample * 0.8); // Reduce system audio volume to 80%
-                    micSample = (short)(micSample * 1.2);      // Boost mic volume by 20%
+                    // Scale samples to prevent overflow and adjust volume
+                    const float outputScale = 0.5f;  // Reduce system audio to 50%
+                    const float micScale = 2.0f;     // Double mic volume
 
-                    // Write to stereo output
-                    byte[] outputBytes = BitConverter.GetBytes(outputSample);
-                    byte[] micBytes = BitConverter.GetBytes(micSample);
+                    int scaledOutput = (int)(outputSample * outputScale);
+                    int scaledMic = (int)(micSample * micScale);
+
+                    // Clamp values to prevent overflow
+                    scaledOutput = Math.Clamp(scaledOutput, short.MinValue, short.MaxValue);
+                    scaledMic = Math.Clamp(scaledMic, short.MinValue, short.MaxValue);
+
+                    byte[] outputBytes = BitConverter.GetBytes((short)scaledOutput);
+                    byte[] micBytes = BitConverter.GetBytes((short)scaledMic);
 
                     // Left channel (system audio)
                     stereoData[i * 2] = outputBytes[0];
