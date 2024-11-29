@@ -91,13 +91,19 @@ namespace apca.Forms
 
         private int GetAudioLevel(byte[] buffer)
         {
-            int sum = 0;
+            if (buffer == null || buffer.Length == 0)
+                return 0; // Return 0 for null or empty buffer
+
+            if (buffer.Length % 2 != 0)
+                return 0; // Return 0 for odd-length buffer
+
+            long sum = 0;
             for (int i = 0; i < buffer.Length; i += 2)
             {
                 short sample = BitConverter.ToInt16(buffer, i);
                 sum += Math.Abs(sample);
             }
-            return sum / (buffer.Length / 2);
+            return (int)(sum / (buffer.Length / 2));
         }
 
         public MainForm()
@@ -111,7 +117,7 @@ namespace apca.Forms
         {
             this.Text = "Dual Channel Audio Capture";
             this.Width = 400;
-            this.Height = 250;
+            this.Height = 350;
 
             var outputLabel = new Label
             {
@@ -358,7 +364,7 @@ namespace apca.Forms
             {
                 LogMessage($"Mix: Output buffer: {outputBuffer.BufferedBytes}, Mic buffer: {micBuffer.BufferedBytes}");
                 
-                int bytesToRead = Math.Min(outputBuffer.BufferedBytes, micBuffer.BufferedBytes);
+                int bytesToRead = Math.Max(outputBuffer.BufferedBytes, micBuffer.BufferedBytes);
                 bytesToRead -= bytesToRead % 2;
 
                 if (bytesToRead == 0) 
@@ -377,26 +383,24 @@ namespace apca.Forms
 
                 LogMessage($"Actually read - Output: {outputRead}, Mic: {micRead}");
 
-                if (outputRead > 0 || micRead > 0)
+                if (bytesToRead > 0)
                 {
                     int micLevel = GetAudioLevel(micData);
                     int outputLevel = GetAudioLevel(outputData);
                     LogMessage($"Levels - Output: {outputLevel}, Mic: {micLevel}");
                     System.Diagnostics.Debug.WriteLine($"Mix: Levels - Output: {outputLevel}, Mic: {micLevel}");
 
-                    byte[] stereoData = new byte[outputRead * 2];
-                    LogMessage($"Created stereo buffer of size: {stereoData.Length} for outputRead: {outputRead}");
+                    byte[] stereoData = new byte[bytesToRead * 2];
+                    LogMessage($"Created stereo buffer of size: {stereoData.Length} for bytesToRead: {bytesToRead}");
 
                     for (int i = 0; i < outputRead; i += 2)
                     {
                         short outputSample = BitConverter.ToInt16(outputData, i);
                         short micSample = BitConverter.ToInt16(micData, i);
-                        
-                        LogMessage($"Read samples at {i} - Output: {outputSample}, Mic: {micSample}");
 
                         // Adjust scaling factors
                         const float outputScale = 0.7f;
-                        const float micScale = 1.5f;
+                        const float micScale = 50.0f;
 
                         // Apply scaling with floating-point arithmetic
                         float scaledOutput = outputSample * outputScale;
@@ -410,24 +414,30 @@ namespace apca.Forms
                         var outputBytes = BitConverter.GetBytes(finalOutput);
                         var micBytes = BitConverter.GetBytes(finalMic);
 
+                        if (outputBytes.Length == 0)
+                        {
+                            outputBytes = new byte[2];
+                        }
+
+                        if (micBytes.Length == 0)
+                        {
+                            micBytes = new byte[2];
+                        }
+
                         int writeIndex = i * 2; // Convert read position to stereo write position
-                        
-                        LogMessage($"Writing at index {writeIndex} - Output bytes: {outputBytes[0]},{outputBytes[1]} Mic bytes: {micBytes[0]},{micBytes[1]}");
 
                         stereoData[writeIndex] = outputBytes[0];     // Left channel, first byte
                         stereoData[writeIndex + 1] = outputBytes[1]; // Left channel, second byte
                         stereoData[writeIndex + 2] = micBytes[0];    // Right channel, first byte
                         stereoData[writeIndex + 3] = micBytes[1];    // Right channel, second byte
                     }
-
-                    LogMessage($"Writing total of {stereoData.Length} bytes to output file");
                     writer.Write(stereoData, 0, stereoData.Length);
                 }
             }
             catch (Exception ex)
             {
                 // Log or handle the error appropriately
-                System.Diagnostics.Debug.WriteLine($"Error in MixAndWriteAudio: {ex.Message}");
+                LogMessage($"Error in MixAndWriteAudio: {ex.Message}");
             }
         }
 
