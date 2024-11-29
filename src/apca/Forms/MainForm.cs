@@ -1,9 +1,9 @@
 using NAudio.Wave;
 using NAudio.CoreAudioApi;
-using AudioCaptureApp.Models;
-using AudioCaptureApp.Services;
+using apca.Models;
+using apca.Services;
 
-namespace AudioCaptureApp.Forms;
+namespace apca.Forms;
 
 public partial class MainForm : Form
 {
@@ -146,7 +146,7 @@ public partial class MainForm : Form
         mixerTimer = new System.Threading.Timer(MixAndWriteAudio, null, 0, 20);
     }
 
-    private void StartButton_Click(object sender, EventArgs e)
+    private void StartButton_Click(object? sender, EventArgs e)
     {
         if (sender is not Button button) return;
 

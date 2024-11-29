@@ -1,54 +1,61 @@
 using NAudio.CoreAudioApi;
-using AudioCaptureApp.Forms;
+using NAudio.CoreAudioApi.Interfaces;
+using apca.Forms;
 
-namespace AudioCaptureApp.Services;
-
-public class DeviceNotificationClient : MMNotificationClient
+namespace apca.Services
 {
-    private readonly MainForm _form;
-
-    public DeviceNotificationClient(MainForm form)
+    public class DeviceNotificationClient : IMMNotificationClient
     {
-        _form = form;
-    }
+        private readonly MainForm _form;
 
-    public override void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
-    {
-        _form.BeginInvoke(new Action(() => {
-            if (!_form.IsRecording)
-            {
-                _form.PopulateDeviceLists();
-            }
-        }));
-    }
+        public DeviceNotificationClient(MainForm form)
+        {
+            _form = form;
+        }
 
-    public override void OnDeviceAdded(string pwstrDeviceId)
-    {
-        _form.BeginInvoke(new Action(() => {
-            if (!_form.IsRecording)
-            {
-                _form.PopulateDeviceLists();
-            }
-        }));
-    }
+        public void OnDefaultDeviceChanged(DataFlow dataFlow, Role role, string defaultDeviceId)
+        {
+            _form.BeginInvoke(new Action(() => {
+                if (!_form.IsRecording)
+                {
+                    _form.PopulateDeviceLists();
+                }
+            }));
+        }
 
-    public override void OnDeviceRemoved(string deviceId)
-    {
-        _form.BeginInvoke(new Action(() => {
-            if (!_form.IsRecording)
-            {
-                _form.PopulateDeviceLists();
-            }
-        }));
-    }
+        public void OnDeviceAdded(string deviceId)
+        {
+            _form.BeginInvoke(new Action(() => {
+                if (!_form.IsRecording)
+                {
+                    _form.PopulateDeviceLists();
+                }
+            }));
+        }
 
-    public override void OnDeviceStateChanged(string deviceId, DeviceState newState)
-    {
-        _form.BeginInvoke(new Action(() => {
-            if (!_form.IsRecording)
-            {
-                _form.PopulateDeviceLists();
-            }
-        }));
+        public void OnDeviceRemoved(string deviceId)
+        {
+            _form.BeginInvoke(new Action(() => {
+                if (!_form.IsRecording)
+                {
+                    _form.PopulateDeviceLists();
+                }
+            }));
+        }
+
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState)
+        {
+            _form.BeginInvoke(new Action(() => {
+                if (!_form.IsRecording)
+                {
+                    _form.PopulateDeviceLists();
+                }
+            }));
+        }
+
+        public void OnPropertyValueChanged(string deviceId, PropertyKey key)
+        {
+            // Usually don't need to handle this one, but required by interface
+        }
     }
 }

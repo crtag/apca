@@ -10,15 +10,18 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Version>1.0.0</Version>
     <Authors>Your Name</Authors>
     <Company>Your Company</Company>
     <Description>Dual channel audio capture application</Description>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.2.1" />
-  </ItemGroup>
+
+<ItemGroup>
+  <PackageReference Include="NAudio" Version="2.1.0" />
+  <PackageReference Include="NAudio.Core" Version="2.1.0" />
+  <PackageReference Include="NAudio.Wasapi" Version="2.1.0" />
+</ItemGroup>
 
 </Project>

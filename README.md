@@ -31,19 +31,19 @@ Download the latest release from the [Releases](../../releases) page.
 3. Wait for the environment to set up
 4. Open terminal and run:
    ```bash
-   dotnet publish src/AudioCaptureApp/AudioCaptureApp.csproj -c Release
+   dotnet publish src/apca/apca.csproj -c Release
    ```
-5. Find your executable in `src/AudioCaptureApp/bin/Release/net6.0-windows/win-x64/publish/AudioCaptureApp.exe`
+5. Find your executable in `src/apca/bin/Release/net6.0-windows/win-x64/publish/apca.exe`
 
 ### Building Locally
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/AudioCaptureApp.git
+   git clone https://github.com/yourusername/apca.git
    ```
-2. Open `AudioCaptureApp.sln` in Visual Studio 2022 or run:
+2. Open `apca.sln` in Visual Studio 2022 or run:
    ```bash
-   dotnet publish src/AudioCaptureApp/AudioCaptureApp.csproj -c Release
+   dotnet publish src/apca/apca.csproj -c Release
    ```
 
 ## Usage

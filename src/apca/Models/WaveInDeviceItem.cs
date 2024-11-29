@@ -1,4 +1,4 @@
-namespace AudioCaptureApp.Models;
+namespace apca.Models;
 
 public class WaveInDeviceItem
 {

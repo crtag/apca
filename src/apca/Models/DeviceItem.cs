@@ -1,6 +1,6 @@
 using NAudio.CoreAudioApi;
 
-namespace AudioCaptureApp.Models;
+namespace apca.Models;
 
 public class DeviceItem
 {

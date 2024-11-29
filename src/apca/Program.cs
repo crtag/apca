@@ -1,6 +1,6 @@
-using AudioCaptureApp.Forms;
+using apca.Forms;
 
-namespace AudioCaptureApp;
+namespace apca;
 
 static class Program
 {
