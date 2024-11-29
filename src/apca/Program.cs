@@ -1,13 +1,16 @@
+using System;
+using System.Windows.Forms;
 using apca.Forms;
 
-namespace apca;
-
-static class Program
+namespace apca
 {
-    [STAThread]
-    static void Main()
+    static class Program
     {
-        ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        [STAThread]
+        static void Main()
+        {
+            ApplicationConfiguration.Initialize();
+            Application.Run(new MainForm());
+        }
     }
 }
