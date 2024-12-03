@@ -76,16 +76,14 @@ namespace apca.Forms
         private WasapiLoopbackCapture? outputCapture;
         private WaveInEvent? micCapture;
         private WaveFileWriter? writer;
-        private BufferedWaveProvider? outputBuffer;
-        private BufferedWaveProvider? micBuffer;
         private MMDeviceEnumerator? deviceEnumerator;
         private ComboBox outputDeviceCombo = null!;
         private ComboBox inputDeviceCombo = null!;
         private string? outputFilePath;
         private bool isRecording;
-        private System.Threading.Timer? mixerTimer;
         private Label outputLevelLabel = null!;
         private Label micLevelLabel = null!;
+        private readonly object writerLock = new object();
 
         public bool IsRecording => isRecording;
 
@@ -226,12 +224,12 @@ namespace apca.Forms
             outputCapture?.Dispose();
             micCapture?.Dispose();
             
-            // Initialize output capture first to get its format
+            // Initialize output capture
             outputCapture = new WasapiLoopbackCapture(outputDevice.Device);
             var deviceFormat = outputCapture.WaveFormat;
             
             // Create a compatible format for both devices
-            var waveFormat = new WaveFormat(deviceFormat.SampleRate, 16, 1);
+            var waveFormat = new WaveFormat(44100, 16, 1);
             
             // Reinitialize output capture with the desired format
             outputCapture.Dispose();
@@ -241,28 +239,12 @@ namespace apca.Forms
             micCapture = new WaveInEvent
             {
                 DeviceNumber = inputDevice.DeviceNumber,
-                WaveFormat = waveFormat
-            };
-
-            // Create buffers with appropriate formats
-            outputBuffer = new BufferedWaveProvider(waveFormat) 
-            {
-                BufferDuration = TimeSpan.FromSeconds(0.2),  // Reduced buffer duration
-                DiscardOnBufferOverflow = true
-            };
-
-            micBuffer = new BufferedWaveProvider(waveFormat)
-            {
-                BufferDuration = TimeSpan.FromSeconds(0.2),
-                DiscardOnBufferOverflow = true
+                WaveFormat = waveFormat,
+                BufferMilliseconds = 20  // Smaller buffer for more frequent updates
             };
 
             outputCapture.DataAvailable += OutputCapture_DataAvailable;
             micCapture.DataAvailable += MicCapture_DataAvailable;
-
-            // Stop existing timer if any
-            mixerTimer?.Dispose();
-            mixerTimer = new System.Threading.Timer(MixAndWriteAudio, null, 0, 5); // Even more frequent updates
         }
 
         private void StartButton_Click(object? sender, EventArgs e)
@@ -299,9 +281,7 @@ namespace apca.Forms
         private void StartRecording()
         {
             outputFilePath = $"dual_channel_audio_{DateTime.Now:yyyyMMdd_HHmmss}.wav";
-            
-            // Create stereo wave format for output
-            var stereoFormat = new WaveFormat(44100, 16, 2);
+            var stereoFormat = new WaveFormat(44100, 16, 2); // Always use stereo output
             writer = new WaveFileWriter(outputFilePath, stereoFormat);
 
             outputCapture?.StartRecording();
@@ -312,14 +292,6 @@ namespace apca.Forms
         {
             outputCapture?.StopRecording();
             micCapture?.StopRecording();
-
-            // Dispose and clear the timer
-            mixerTimer?.Dispose();
-            mixerTimer = null;
-
-            // Clear the buffers
-            outputBuffer?.ClearBuffer();
-            micBuffer?.ClearBuffer();
 
             writer?.Dispose();
             writer = null;
@@ -332,112 +304,90 @@ namespace apca.Forms
 
         private void OutputCapture_DataAvailable(object? sender, WaveInEventArgs e)
         {
-            if (isRecording)
+            if (!isRecording) return;
+
+            try
             {
-                outputBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                WriteAudioData(e.Buffer, e.BytesRecorded, true);
                 int level = GetAudioLevel(e.Buffer);
                 this.BeginInvoke(() => outputLevelLabel.Text = $"Output Level: {level}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error in OutputCapture_DataAvailable: {ex.Message}");
             }
         }
 
         private void MicCapture_DataAvailable(object? sender, WaveInEventArgs e)
         {
-            if (isRecording)
-            {
-                LogMessage($"Mic incoming data: {e.BytesRecorded} bytes");
-                int preBufLevel = GetAudioLevel(e.Buffer);
-                LogMessage($"Pre-buffer mic level: {preBufLevel}");
-                
-                micBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
-                LogMessage($"Mic buffer contains: {micBuffer?.BufferedBytes ?? 0} bytes");
-                
-                int level = GetAudioLevel(e.Buffer);
-                this.BeginInvoke(() => micLevelLabel.Text = $"Mic Level: {level}");
-            }
-        }
-
-        private void MixAndWriteAudio(object? state)
-        {
-            if (!isRecording || writer == null || outputBuffer == null || micBuffer == null) return;
+            if (!isRecording) return;
 
             try
             {
-                LogMessage($"Mix: Output buffer: {outputBuffer.BufferedBytes}, Mic buffer: {micBuffer.BufferedBytes}");
-                
-                int bytesToRead = Math.Max(outputBuffer.BufferedBytes, micBuffer.BufferedBytes);
-                bytesToRead -= bytesToRead % 2;
+                WriteAudioData(e.Buffer, e.BytesRecorded, false);
+                int level = GetAudioLevel(e.Buffer);
+                this.BeginInvoke(() => micLevelLabel.Text = $"Mic Level: {level}");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error in MicCapture_DataAvailable: {ex.Message}");
+            }
+        }
 
-                if (bytesToRead == 0) 
+        private void WriteAudioData(byte[] buffer, int bytesRecorded, bool isOutput)
+        {
+            if (writer == null || bytesRecorded == 0) return;
+
+            try
+            {
+                // Create stereo buffer (twice the size since we're converting mono to stereo)
+                byte[] stereoData = new byte[bytesRecorded * 2];
+
+                // Process each sample (2 bytes per sample since we're using 16-bit audio)
+                for (int i = 0; i < bytesRecorded; i += 2)
                 {
-                    LogMessage("No bytes to read from buffers");
-                    return;
+                    if (i + 1 >= bytesRecorded) break; // Skip incomplete sample at the end if any
+
+                    // Get the sample from the incoming buffer
+                    short sample = BitConverter.ToInt16(buffer, i);
+
+                    // Scale the sample
+                    float scaledSample = sample * (isOutput ? 0.7f : 50.0f);
+                    short finalSample = (short)Math.Clamp(scaledSample, short.MinValue, short.MaxValue);
+
+                    // Convert back to bytes
+                    byte[] sampleBytes = BitConverter.GetBytes(finalSample);
+
+                    // Write to the appropriate stereo channel
+                    int stereoIndex = i * 2;
+                    if (isOutput)
+                    {
+                        // Output device goes to left channel
+                        stereoData[stereoIndex] = sampleBytes[0];
+                        stereoData[stereoIndex + 1] = sampleBytes[1];
+                        stereoData[stereoIndex + 2] = 0; // Right channel silent
+                        stereoData[stereoIndex + 3] = 0;
+                    }
+                    else
+                    {
+                        // Mic goes to right channel
+                        stereoData[stereoIndex] = 0; // Left channel silent
+                        stereoData[stereoIndex + 1] = 0;
+                        stereoData[stereoIndex + 2] = sampleBytes[0];
+                        stereoData[stereoIndex + 3] = sampleBytes[1];
+                    }
                 }
 
-                LogMessage($"Will read {bytesToRead} bytes");
-
-                byte[] outputData = new byte[bytesToRead];
-                byte[] micData = new byte[bytesToRead];
-
-                int outputRead = outputBuffer.Read(outputData, 0, bytesToRead);
-                int micRead = micBuffer.Read(micData, 0, bytesToRead);
-
-                LogMessage($"Actually read - Output: {outputRead}, Mic: {micRead}");
-
-                if (bytesToRead > 0)
+                // Write the stereo data
+                lock (writerLock)
                 {
-                    int micLevel = GetAudioLevel(micData);
-                    int outputLevel = GetAudioLevel(outputData);
-                    LogMessage($"Levels - Output: {outputLevel}, Mic: {micLevel}");
-                    System.Diagnostics.Debug.WriteLine($"Mix: Levels - Output: {outputLevel}, Mic: {micLevel}");
-
-                    byte[] stereoData = new byte[bytesToRead * 2];
-                    LogMessage($"Created stereo buffer of size: {stereoData.Length} for bytesToRead: {bytesToRead}");
-
-                    for (int i = 0; i < outputRead; i += 2)
-                    {
-                        short outputSample = BitConverter.ToInt16(outputData, i);
-                        short micSample = BitConverter.ToInt16(micData, i);
-
-                        // Adjust scaling factors
-                        const float outputScale = 0.7f;
-                        const float micScale = 50.0f;
-
-                        // Apply scaling with floating-point arithmetic
-                        float scaledOutput = outputSample * outputScale;
-                        float scaledMic = micSample * micScale;
-
-                        // Clamp values
-                        short finalOutput = (short)Math.Clamp(scaledOutput, short.MinValue, short.MaxValue);
-                        short finalMic = (short)Math.Clamp(scaledMic, short.MinValue, short.MaxValue);
-
-                        // Write to stereo output
-                        var outputBytes = BitConverter.GetBytes(finalOutput);
-                        var micBytes = BitConverter.GetBytes(finalMic);
-
-                        if (outputBytes.Length == 0)
-                        {
-                            outputBytes = new byte[2];
-                        }
-
-                        if (micBytes.Length == 0)
-                        {
-                            micBytes = new byte[2];
-                        }
-
-                        int writeIndex = i * 2; // Convert read position to stereo write position
-
-                        stereoData[writeIndex] = outputBytes[0];     // Left channel, first byte
-                        stereoData[writeIndex + 1] = outputBytes[1]; // Left channel, second byte
-                        stereoData[writeIndex + 2] = micBytes[0];    // Right channel, first byte
-                        stereoData[writeIndex + 3] = micBytes[1];    // Right channel, second byte
-                    }
                     writer.Write(stereoData, 0, stereoData.Length);
+                    writer.Flush();
                 }
             }
             catch (Exception ex)
             {
-                // Log or handle the error appropriately
-                LogMessage($"Error in MixAndWriteAudio: {ex.Message}");
+                LogMessage($"Error in WriteAudioData: {ex.Message}");
             }
         }
 
@@ -470,7 +420,6 @@ namespace apca.Forms
             micCapture?.Dispose();
             writer?.Dispose();
             deviceEnumerator?.Dispose();
-            mixerTimer?.Dispose();
             base.OnFormClosing(e);
         }
     }
