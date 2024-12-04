@@ -16,7 +16,7 @@ namespace apca.Services
         public void OnDefaultDeviceChanged(DataFlow dataFlow, Role role, string defaultDeviceId)
         {
             _form.BeginInvoke(new Action(() => {
-                if (!_form.IsRecording)
+                if (!_form.isRecording)
                 {
                     _form.PopulateDeviceLists();
                 }
@@ -26,7 +26,7 @@ namespace apca.Services
         public void OnDeviceAdded(string deviceId)
         {
             _form.BeginInvoke(new Action(() => {
-                if (!_form.IsRecording)
+                if (!_form.isRecording)
                 {
                     _form.PopulateDeviceLists();
                 }
@@ -36,7 +36,7 @@ namespace apca.Services
         public void OnDeviceRemoved(string deviceId)
         {
             _form.BeginInvoke(new Action(() => {
-                if (!_form.IsRecording)
+                if (!_form.isRecording)
                 {
                     _form.PopulateDeviceLists();
                 }
@@ -46,7 +46,7 @@ namespace apca.Services
         public void OnDeviceStateChanged(string deviceId, DeviceState newState)
         {
             _form.BeginInvoke(new Action(() => {
-                if (!_form.IsRecording)
+                if (!_form.isRecording)
                 {
                     _form.PopulateDeviceLists();
                 }
